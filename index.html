@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>EPUB 표지 삽입기</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root {
+    --bg: #0f0f13;
+    --surface: #1a1a22;
+    --surface2: #22222e;
+    --border: #2e2e3e;
+    --accent: #c8a96e;
+    --accent-dim: rgba(200,169,110,0.12);
+    --text: #e8e4db;
+    --text-muted: #7a7a8e;
+    --success: #6ec8a9;
+    --error: #c86e6e;
+    --radius: 14px;
+    --font: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px 48px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 36px;
+  }
+
+  .logo {
+    font-size: 11px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+
+  h1 {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    line-height: 1.2;
+  }
+
+  h1 span {
+    color: var(--accent);
+  }
+
+  .subtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    line-height: 1.6;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 480px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+
+  .card-label {
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+    font-weight: 600;
+  }
+
+  .drop-zone {
+    border: 1.5px dashed var(--border);
+    border-radius: 10px;
+    padding: 28px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--bg);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  .drop-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .drop-icon {
+    font-size: 28px;
+    margin-bottom: 8px;
+  }
+
+  .drop-text {
+    font-size: 14px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+
+  .drop-text strong {
+    color: var(--text);
+    display: block;
+    margin-bottom: 2px;
+  }
+
+  .file-chosen {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--accent-dim);
+    border-radius: 8px;
+    border: 1px solid rgba(200,169,110,0.25);
+    margin-top: 10px;
+  }
+
+  .file-chosen-icon { font-size: 20px; }
+
+  .file-chosen-name {
+    font-size: 13px;
+    color: var(--text);
+    word-break: break-all;
+    flex: 1;
+  }
+
+  .file-clear {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: color 0.15s;
+    line-height: 1;
+  }
+
+  .file-clear:hover { color: var(--error); }
+
+  /* preview */
+  .cover-preview {
+    width: 80px;
+    height: 110px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 20px 0;
+  }
+
+  .options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .option-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .option-label {
+    font-size: 13px;
+    color: var(--text);
+  }
+
+  .option-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* toggle */
+  .toggle {
+    position: relative;
+    width: 44px;
+    height: 26px;
+    flex-shrink: 0;
+  }
+
+  .toggle input { opacity: 0; width: 0; height: 0; }
+
+  .toggle-track {
+    position: absolute;
+    inset: 0;
+    background: var(--border);
+    border-radius: 13px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .toggle input:checked + .toggle-track { background: var(--accent); }
+
+  .toggle-thumb {
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 20px; height: 20px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s;
+    pointer-events: none;
+  }
+
+  .toggle input:checked ~ .toggle-thumb { transform: translateX(18px); }
+
+  .btn-run {
+    width: 100%;
+    max-width: 480px;
+    padding: 16px;
+    background: var(--accent);
+    color: #0f0f13;
+    font-size: 15px;
+    font-weight: 700;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    letter-spacing: 0.02em;
+  }
+
+  .btn-run:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .btn-run:not(:disabled):active {
+    transform: scale(0.98);
+  }
+
+  /* status */
+  .status {
+    width: 100%;
+    max-width: 480px;
+    margin-top: 14px;
+    font-size: 13px;
+    border-radius: 10px;
+    padding: 14px 16px;
+    line-height: 1.6;
+    display: none;
+  }
+
+  .status.info {
+    background: rgba(110,200,169,0.1);
+    border: 1px solid rgba(110,200,169,0.25);
+    color: var(--success);
+    display: block;
+  }
+
+  .status.error {
+    background: rgba(200,110,110,0.1);
+    border: 1px solid rgba(200,110,110,0.25);
+    color: var(--error);
+    display: block;
+  }
+
+  .status.loading {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    display: block;
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .progress-bar {
+    height: 3px;
+    background: var(--border);
+    border-radius: 99px;
+    margin-top: 10px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 99px;
+    width: 0%;
+    transition: width 0.3s ease;
+  }
+
+  footer {
+    margin-top: 40px;
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: center;
+    line-height: 1.8;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">EPUB Tools</div>
+  <h1>표지 <span>삽입기</span></h1>
+  <p class="subtitle">EPUB 파일과 이미지를 올리면<br>맨 앞장에 표지를 자동으로 넣어드려요</p>
+</header>
+
+<!-- EPUB 파일 -->
+<div class="card">
+  <div class="card-label">01 · EPUB 파일</div>
+  <div class="drop-zone" id="epubZone" ondragover="handleDragOver(event,'epubZone')" ondragleave="handleDragLeave('epubZone')" ondrop="handleDrop(event,'epub')">
+    <input type="file" accept=".epub,application/epub+zip,application/octet-stream,*/*" onchange="handleFile(event,'epub')">
+    <div class="drop-icon">📖</div>
+    <div class="drop-text">
+      <strong>EPUB 파일 선택</strong>
+      탭하거나 파일을 끌어다 놓으세요
+    </div>
+  </div>
+  <div id="epubInfo" style="display:none"></div>
+</div>
+
+<!-- 표지 이미지 -->
+<div class="card">
+  <div class="card-label">02 · 표지 이미지</div>
+  <div class="drop-zone" id="imgZone" ondragover="handleDragOver(event,'imgZone')" ondragleave="handleDragLeave('imgZone')" ondrop="handleDrop(event,'img')">
+    <input type="file" accept="image/*,.jpg,.jpeg,.png,.webp" onchange="handleFile(event,'img')">
+    <div class="drop-icon">🖼️</div>
+    <div class="drop-text">
+      <strong>이미지 파일 선택</strong>
+      JPG, PNG, WEBP 지원
+    </div>
+  </div>
+  <div id="imgInfo" style="display:none"></div>
+</div>
+
+<!-- 옵션 -->
+<div class="card">
+  <div class="card-label">03 · 옵션</div>
+  <div class="options">
+    <div class="option-row">
+      <div>
+        <div class="option-label">기존 표지 교체</div>
+        <div class="option-desc">이미 표지가 있으면 새 이미지로 덮어씁니다</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="optReplace" checked>
+        <div class="toggle-track"></div>
+        <div class="toggle-thumb"></div>
+      </label>
+    </div>
+    <div class="divider"></div>
+    <div class="option-row">
+      <div>
+        <div class="option-label">메타데이터 업데이트</div>
+        <div class="option-desc">OPF에 cover 메타 항목을 추가합니다</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="optMeta" checked>
+        <div class="toggle-track"></div>
+        <div class="toggle-thumb"></div>
+      </label>
+    </div>
+    <div class="divider"></div>
+    <div class="option-row">
+      <div>
+        <div class="option-label">표지 XHTML 페이지 생성</div>
+        <div class="option-desc">이미지를 감싸는 표지 페이지를 spine 맨 앞에 삽입</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="optPage" checked>
+        <div class="toggle-track"></div>
+        <div class="toggle-thumb"></div>
+      </label>
+    </div>
+  </div>
+</div>
+
+<button class="btn-run" id="runBtn" disabled onclick="runInsert()">표지 삽입 후 저장</button>
+
+<div class="status" id="statusBox"></div>
+
+<footer>
+  모든 처리는 브라우저 내에서 이루어집니다<br>파일이 서버로 전송되지 않아요
+</footer>
+
+<script>
+// ── 상태 ──────────────────────────────────────────
+let epubFile = null;
+let imgFile = null;
+
+// ── 드래그앤드롭 ───────────────────────────────────
+function handleDragOver(e, zoneId) {
+  e.preventDefault();
+  document.getElementById(zoneId).classList.add('drag-over');
+}
+function handleDragLeave(zoneId) {
+  document.getElementById(zoneId).classList.remove('drag-over');
+}
+function handleDrop(e, type) {
+  e.preventDefault();
+  const zoneId = type === 'epub' ? 'epubZone' : 'imgZone';
+  document.getElementById(zoneId).classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) assignFile(type, file);
+}
+function handleFile(e, type) {
+  const file = e.target.files[0];
+  if (file) assignFile(type, file);
+}
+
+function assignFile(type, file) {
+  if (type === 'epub') {
+    epubFile = file;
+    showFileInfo('epubInfo', '📖', file.name, () => { epubFile = null; document.getElementById('epubInfo').style.display='none'; updateBtn(); });
+  } else {
+    imgFile = file;
+    showImgInfo(file);
+  }
+  updateBtn();
+}
+
+function showFileInfo(divId, icon, name, onClear) {
+  const div = document.getElementById(divId);
+  div.style.display = 'flex';
+  div.className = 'file-chosen';
+  div.innerHTML = `<span class="file-chosen-icon">${icon}</span><span class="file-chosen-name">${name}</span><button class="file-clear" onclick="clearFile('${divId === 'epubInfo' ? 'epub' : 'img'}')">✕</button>`;
+}
+
+function showImgInfo(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const div = document.getElementById('imgInfo');
+    div.style.display = 'flex';
+    div.className = 'file-chosen';
+    div.innerHTML = `<img src="${e.target.result}" class="cover-preview"><span class="file-chosen-name">${file.name}</span><button class="file-clear" onclick="clearFile('img')">✕</button>`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearFile(type) {
+  if (type === 'epub') {
+    epubFile = null;
+    document.getElementById('epubInfo').style.display = 'none';
+  } else {
+    imgFile = null;
+    document.getElementById('imgInfo').style.display = 'none';
+  }
+  updateBtn();
+}
+
+function updateBtn() {
+  document.getElementById('runBtn').disabled = !(epubFile && imgFile);
+}
+
+// ── 상태 메시지 ────────────────────────────────────
+function setStatus(type, html, progress = null) {
+  const box = document.getElementById('statusBox');
+  box.className = 'status ' + type;
+  box.innerHTML = html + (progress !== null ? `<div class="progress-bar"><div class="progress-fill" id="pgFill" style="width:${progress}%"></div></div>` : '');
+}
+function setProgress(pct) {
+  const el = document.getElementById('pgFill');
+  if (el) el.style.width = pct + '%';
+}
+
+// ── 핵심 로직 ──────────────────────────────────────
+async function runInsert() {
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+
+  try {
+    setStatus('loading', '<span class="spinner"></span> EPUB 읽는 중…', 5);
+
+    const epubBuf = await epubFile.arrayBuffer();
+    const zip = await JSZip.loadAsync(epubBuf);
+
+    setProgress(20);
+
+    // ── 1. mimetype & container.xml 확인 ────────────
+    const containerXml = await zip.file('META-INF/container.xml').async('string');
+    const rootfileMatch = containerXml.match(/full-path="([^"]+)"/);
+    if (!rootfileMatch) throw new Error('OPF 경로를 찾을 수 없어요');
+    const opfPath = rootfileMatch[1];
+    const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : '';
+
+    setStatus('loading', '<span class="spinner"></span> OPF 분석 중…', 35);
+
+    let opfText = await zip.file(opfPath).async('string');
+
+    // ── 2. 이미지 확장자 & MIME ────────────────────
+    const imgName = imgFile.name.toLowerCase();
+    const ext = imgName.split('.').pop();
+    const mimeMap = { jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png', webp:'image/webp', gif:'image/gif' };
+    const imgMime = mimeMap[ext] || 'image/jpeg';
+    const coverImgId = 'cover-image';
+    const coverImgFilename = `cover.${ext === 'jpg' ? 'jpg' : ext}`;
+    const coverImgPath = opfDir + 'images/' + coverImgFilename;
+
+    // ── 3. 이미지 파일 추가 ────────────────────────
+    setProgress(50);
+    const imgBuf = await imgFile.arrayBuffer();
+
+    // 기존 cover 이미지 제거 (옵션 켜짐)
+    if (document.getElementById('optReplace').checked) {
+      // manifest에서 cover-image id를 찾아 경로 제거
+      const oldCoverMatch = opfText.match(/id="cover-image"[^/]*href="([^"]+)"/);
+      if (oldCoverMatch) {
+        const oldPath = opfDir + oldCoverMatch[1];
+        zip.remove(oldPath);
+      }
+    }
+
+    zip.file(coverImgPath, imgBuf);
+
+    // ── 4. 표지 XHTML 페이지 ──────────────────────
+    const optPage = document.getElementById('optPage').checked;
+    const coverXhtmlId = 'cover-page';
+    const coverXhtmlFilename = 'cover.xhtml';
+    const coverXhtmlPath = opfDir + coverXhtmlFilename;
+
+    if (optPage) {
+      const coverXhtml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ko">
+<head>
+  <meta http-equiv="Content-Type" content="application/xhtml+xml; charset=utf-8"/>
+  <title>표지</title>
+  <style type="text/css">
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; }
+    div { text-align: center; }
+    img { max-width: 100%; max-height: 100vh; }
+  </style>
+</head>
+<body>
+  <div>
+    <img src="images/${coverImgFilename}" alt="표지"/>
+  </div>
+</body>
+</html>`;
+      // 기존 표지 xhtml 제거
+      if (document.getElementById('optReplace').checked) {
+        zip.remove(coverXhtmlPath);
+      }
+      zip.file(coverXhtmlPath, coverXhtml);
+    }
+
+    // ── 5. OPF 수정 ────────────────────────────────
+    setStatus('loading', '<span class="spinner"></span> OPF 수정 중…', 65);
+
+    // manifest: cover-image 항목 제거 후 재삽입
+    opfText = opfText.replace(/<item[^>]*id="cover-image"[^/]*\/>/g, '');
+    opfText = opfText.replace(/<item[^>]*id="cover-page"[^/]*\/>/g, '');
+
+    // manifest 끝 직전에 삽입
+    const imgItem = `<item id="${coverImgId}" href="images/${coverImgFilename}" media-type="${imgMime}" properties="cover-image"/>`;
+    const pageItem = optPage ? `<item id="${coverXhtmlId}" href="${coverXhtmlFilename}" media-type="application/xhtml+xml"/>` : '';
+
+    opfText = opfText.replace(/(<\/manifest>)/, `  ${imgItem}\n  ${pageItem}\n$1`);
+
+    // spine: cover-page를 맨 앞에
+    if (optPage) {
+      // 기존 cover-page itemref 제거
+      opfText = opfText.replace(/<itemref[^>]*idref="cover-page"[^/]*\/>/g, '');
+      opfText = opfText.replace(/(<spine[^>]*>)/, `$1\n    <itemref idref="${coverXhtmlId}" linear="yes"/>`);
+    }
+
+    // meta: cover
+    if (document.getElementById('optMeta').checked) {
+      opfText = opfText.replace(/<meta[^>]*name="cover"[^/]*\/>/g, '');
+      opfText = opfText.replace(/(<metadata[^>]*>)/, `$1\n    <meta name="cover" content="${coverImgId}"/>`);
+    }
+
+    zip.file(opfPath, opfText);
+
+    // ── 6. 저장 ────────────────────────────────────
+    setStatus('loading', '<span class="spinner"></span> EPUB 생성 중…', 80);
+
+    // mimetype은 압축 없이 맨 앞
+    const mimetypeContent = 'application/epub+zip';
+    const mimetypeFile = zip.file('mimetype');
+    zip.remove('mimetype');
+
+    const newZip = new JSZip();
+    newZip.file('mimetype', mimetypeContent, { compression: 'STORE' });
+
+    // 나머지 파일 복사
+    const promises = [];
+    zip.forEach((relativePath, zipEntry) => {
+      if (relativePath === 'mimetype') return;
+      promises.push(
+        zipEntry.async('arraybuffer').then(buf => {
+          newZip.file(relativePath, buf, { compression: 'DEFLATE', compressionOptions: { level: 6 } });
+        })
+      );
+    });
+    await Promise.all(promises);
+
+    setProgress(90);
+
+    const outBlob = await newZip.generateAsync({ type: 'blob', mimeType: 'application/epub+zip' });
+
+    setProgress(100);
+
+    // 다운로드
+    const origName = epubFile.name.replace(/\.epub$/i, '');
+    const outName = origName + '_cover.epub';
+
+    const url = URL.createObjectURL(outBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = outName;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+
+    setStatus('info', `✅ 완료! <strong>${outName}</strong> 저장됨<br><span style="color:var(--text-muted);font-size:12px">파일 크기: ${(outBlob.size/1024).toFixed(0)} KB</span>`);
+
+  } catch (err) {
+    console.error(err);
+    setStatus('error', `❌ 오류 발생: ${err.message}`);
+  } finally {
+    btn.disabled = !(epubFile && imgFile);
+  }
+}
+</script>
+</body>
+</html>
